@@ -5,83 +5,115 @@ pragma solidity >=0.8.0 <0.9.0;
 import "hardhat/console.sol";
 
 // Use openzeppelin to inherit battle-tested implementations (ERC20, ERC721, etc)
-// import "@openzeppelin/contracts/access/Ownable.sol
+// import "@openzeppelin/contracts/access/Ownable.sol";??
 
 /**
  * A smart contract that allows changing a state variable of the contract and tracking the changes
  * It also allows the owner to withdraw the Ether in the contract
  * @author BuidlGuidl
  */
-contract YourContract {
-	// State Variables
-	address public immutable owner;
-	string public greeting = "Building Unstoppable Apps!!!";
-	bool public premium = false;
-	uint256 public totalCounter = 0;
-	mapping(address => uint) public userGreetingCounter;
+ /**
+ * @title Nairoverse - A marketplace for in-game assets on Lisk
+ * @author [Martian]
+ */
+contract Nairoverse is LiskTransaction {
+    // State variables
+    address payable public owner; // Contract owner address
+    uint256 public nextGameId; // Counter for generating unique game IDs
+    uint256 public nextNftId; // Counter for generating unique NFT IDs
 
-	// Events: a way to emit log statements from smart contract that can be listened to by external parties
-	event GreetingChange(
-		address indexed greetingSetter,
-		string newGreeting,
-		bool premium,
-		uint256 value
-	);
+    // Game data structure
+    struct Game {
+        uint256 id; // Unique game identifier
+        string name; // Game name
+        address payable developer; // Address of the developer who registered the game
+        string genre; // Optional genre of the game
+        string description; // Optional description of the game
+    }
 
-	// Constructor: Called once on contract deployment
-	// Check packages/hardhat/deploy/00_deploy_your_contract.ts
-	constructor(address _owner) {
-		owner = _owner;
-	}
+    // NFT (in-game asset) data structure
+    struct NFT {
+        uint256 id; // Unique NFT identifier
+        uint256 gameId; // ID of the game this NFT belongs to (reference to Game struct)
+        address payable owner; // Current owner of the NFT
+        string assetType; // Type of in-game asset (e.g., weapon, skin, character)
+        string rarityLevel; // Rarity level of the NFT (e.g., common, rare, epic)
+        // Optional metadata field can be added here for additional attributes
+    }
 
-	// Modifier: used to define a set of rules that must be met before or after a function is executed
-	// Check the withdraw() function
-	modifier isOwner() {
-		// msg.sender: predefined variable that represents address of the account that called the current function
-		require(msg.sender == owner, "Not the Owner");
-		_;
-	}
+    // Mapping of game IDs to Game structs
+    mapping(uint256 => Game) public games;
 
-	/**
-	 * Function that allows anyone to change the state variable "greeting" of the contract and increase the counters
-	 *
-	 * @param _newGreeting (string memory) - new greeting to save on the contract
-	 */
-	function setGreeting(string memory _newGreeting) public payable {
-		// Print data to the hardhat chain console. Remove when deploying to a live network.
-		console.log(
-			"Setting new greeting '%s' from %s",
-			_newGreeting,
-			msg.sender
-		);
+    // Mapping of NFT IDs to NFT structs
+    mapping(uint256 => NFT) public nfts;
 
-		// Change state variables
-		greeting = _newGreeting;
-		totalCounter += 1;
-		userGreetingCounter[msg.sender] += 1;
+    // Event emitted when a new game is registered
+    event GameRegistered(uint256 id, string name, address developer);
 
-		// msg.value: built-in global variable that represents the amount of ether sent with the transaction
-		if (msg.value > 0) {
-			premium = true;
-		} else {
-			premium = false;
-		}
+    // Event emitted when a new NFT is created
+    event NFTCreated(uint256 id, uint256 gameId, address owner);
 
-		// emit: keyword used to trigger an event
-		emit GreetingChange(msg.sender, _newGreeting, msg.value > 0, msg.value);
-	}
+    // Event emitted when an NFT is transferred (purchased)
+    event NFTTransferred(uint256 id, address from, address to, uint256 price);
 
-	/**
-	 * Function that allows the owner to withdraw all the Ether in the contract
-	 * The function can only be called by the owner of the contract as defined by the isOwner modifier
-	 */
-	function withdraw() public isOwner {
-		(bool success, ) = owner.call{ value: address(this).balance }("");
-		require(success, "Failed to send Ether");
-	}
+    // Modifier to restrict functions to contract owner
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
 
-	/**
-	 * Function that allows the contract to receive ETH
-	 */
-	receive() external payable {}
+    // Constructor (called upon deployment)
+    constructor() public {
+        owner = payable(msg.sender); // Set contract owner as the deployer
+        nextGameId = 1; // Initialize ID counters
+        nextNftId = 1;
+    }
+
+    // Register a new game on the marketplace (Lisk transaction)
+    function registerGame(
+        string memory _name,
+        string memory _genre,
+        string memory _description
+    ) public payable transaction {
+        uint256 newGameId = nextGameId++; // Generate unique game ID
+
+        games[newGameId] = Game({
+            id: newGameId,
+            name: _name,
+            developer: payable(msg.sender),
+            genre: _genre,
+            description: _description
+        });
+
+        emit GameRegistered(newGameId, _name, msg.sender);
+    }
+
+    // Function to generate a secure random number (for Lisk, use chain-specific method)
+    function generateRandomNumber() private view returns (uint256) {
+        // Replace with Lisk's secure random number generation function
+        return uint256(keccak256(abi.encodePacked(blockhash(block.number - 1), msg.sender))); 
+    }
+
+    // Create a new NFT (in-game asset) associated with a registered game (Lisk transaction)
+    function createNFT(
+    uint256 _gameId,
+    string memory _assetType,
+    string memory _rarityLevel
+) public payable transaction {
+    require(games[_gameId].id > 0, "Invalid game ID"); // Check if game exists
+
+    uint256 newNftId = generateRandomNumber(); // Use secure random number generation
+    while (nfts[newNftId].id > 0) {
+        newNftId = generateRandomNumber(); // Prevent duplicate IDs
+    }
+
+    nfts[newNftId] = NFT({
+        id: newNftId,
+        gameId: _gameId,
+        owner: payable(msg.sender), // Deployer initially owns the NFT
+        assetType: _assetType,
+        rarityLevel: _rarityLevel
+    });
+
+    emit NFTCreated(newNftId, _gameId, msg.sender);
 }
